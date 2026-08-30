@@ -15,7 +15,7 @@ const GROUP_LABEL = 'text-[0.6875rem] font-semibold uppercase tracking-[0.08em] 
  * impact ones are ranked; the rest are named but not prioritised. Uplift is
  * displayed as returned by the backend, never recomputed here.
  */
-export default function FocusAreaList({ gaps }) {
+export default function FocusAreaList({ gaps, totalMissing = gaps.length }) {
   const focusAreas = gaps.slice(0, MAX_FOCUS_AREAS);
   const alsoMissing = gaps.slice(MAX_FOCUS_AREAS);
 
@@ -25,7 +25,7 @@ export default function FocusAreaList({ gaps }) {
         <h2 className="text-sm font-semibold text-ink">Missing for this role</h2>
         {gaps.length > 0 && (
           <p className="shrink-0 text-xs font-medium text-ink-soft">
-            {gaps.length} {gaps.length === 1 ? 'requirement' : 'requirements'}
+            {totalMissing} {totalMissing === 1 ? 'requirement' : 'requirements'}
           </p>
         )}
       </div>
@@ -37,11 +37,16 @@ export default function FocusAreaList({ gaps }) {
       ) : (
         <>
           <p className={`mt-5 ${GROUP_LABEL}`}>Your top {focusAreas.length} to start with</p>
+          {totalMissing > gaps.length && (
+            <p className="mt-2 text-xs text-ink-soft">
+              Showing {focusAreas.length} priority gaps out of {totalMissing} missing requirements.
+            </p>
+          )}
 
           <ol className="mt-2 space-y-3">
             {focusAreas.map((gap, index) => (
               <li
-                key={gap.skill}
+                key={gap.skill_id ?? gap.skill}
                 className="flex items-start gap-3 rounded-2xl border border-ink-faint/15 bg-white/60 px-4 py-3"
               >
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-grad-btn text-xs font-semibold text-white">

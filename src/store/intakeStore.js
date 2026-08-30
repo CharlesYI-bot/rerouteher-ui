@@ -15,21 +15,42 @@ const initialState = {
   currentStepIndex: 0,
 };
 
+// Old snapshots may have role-name-only claims or no valid recommendations.
+// Preserve the uploaded CV and break answers; recompute downstream results.
+export const migrateSession = (persisted) => ({
+  ...initialState,
+  ...persisted,
+  snapshot: null,
+  selectedRole: null,
+  gapResult: null,
+  currentStepIndex: 0,
+});
+
 export const useIntakeStore = create(
   persist(
     (set, get) => ({
       ...initialState,
 
-      setCv: (cv) => set({ cv, cvParsed: true }),
-      clearCv: () => set({ cv: null, cvParsed: false }),
+      setCv: (cv) =>
+        set({ cv, cvParsed: true, snapshot: null, selectedRole: null, gapResult: null }),
+      clearCv: () =>
+        set({ cv: null, cvParsed: false, snapshot: null, selectedRole: null, gapResult: null }),
 
       setBreakDuration: (years) =>
-        set((state) => ({ break: { ...state.break, duration_years: years } })),
+        set((state) => ({
+          break: { ...state.break, duration_years: years },
+          snapshot: null,
+          selectedRole: null,
+          gapResult: null,
+        })),
 
       toggleActivity: (id) =>
         set((state) => {
           const selected = state.break.activities;
           return {
+            snapshot: null,
+            selectedRole: null,
+            gapResult: null,
             break: {
               ...state.break,
               activities: selected.includes(id)
@@ -45,7 +66,7 @@ export const useIntakeStore = create(
       setSnapshot: (snapshot) =>
         set({
           snapshot,
-          // Index 0 is her previous occupation and the default target role.
+          // First recommendation is the default target, not necessarily the previous job.
           selectedRole: snapshot?.recommended_roles?.[0]?.role ?? null,
           // Drop any gap from a previous snapshot so it is recomputed for the new role.
           gapResult: null,
@@ -63,6 +84,6 @@ export const useIntakeStore = create(
 
       reset: () => set(initialState),
     }),
-    { name: STORAGE_KEY, version: 1 }
+    { name: STORAGE_KEY, version: 2, migrate: migrateSession }
   )
 );

@@ -9,13 +9,15 @@ export default function OccupationLine({ occupation }) {
   if (!occupation) {
     return (
       <p className="mt-2 text-sm text-ink-soft sm:text-base">
-        Here is what you already bring. No suitable match found for a previous occupation, so you
-        can pick any target role on the next step.
+        Here is what you already bring. We could not reliably identify your previous occupation.
       </p>
     );
   }
 
-  const exploratory = !isHighConfidence(occupation.confidence);
+  const exploratory =
+    occupation.method !== 'cv_title' &&
+    Number.isFinite(occupation.confidence) &&
+    !isHighConfidence(occupation.confidence);
 
   return (
     <>
@@ -27,8 +29,8 @@ export default function OccupationLine({ occupation }) {
       {exploratory && (
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
           <ConfidenceBadge confidence={occupation.confidence} />
-          Treat this as a starting point rather than a verdict — you can switch to any role on the
-          next step.
+          Treat this as a starting point rather than a verdict — you can switch between suggested
+          roles on the next step.
         </p>
       )}
     </>

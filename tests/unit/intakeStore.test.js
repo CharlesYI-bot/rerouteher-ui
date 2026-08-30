@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useIntakeStore } from '../../src/store/intakeStore.js';
+import { migrateSession, useIntakeStore } from '../../src/store/intakeStore.js';
 import snapshot from '../../src/mocks/fixtures/snapshot.high-confidence.json';
 
 const store = () => useIntakeStore.getState();
@@ -58,5 +58,33 @@ describe('intake store', () => {
   it('persists the session under the shared storage key', () => {
     store().setBreakDuration(5);
     expect(localStorage.getItem('rerouteher.guestSession')).toContain('"duration_years":5');
+  });
+
+  it('invalidates old snapshot and gap data while preserving the uploaded CV and break answers', () => {
+    const cv = { fileName: 'test.pdf', raw_text: 'synthetic' };
+    const migrated = migrateSession({
+      cv,
+      cvParsed: true,
+      break: { duration_years: 5, activities: ['A1'] },
+      snapshot,
+      selectedRole: 'Old Role',
+      gapResult: { readiness: 100 },
+    });
+    expect(migrated.cv).toEqual(cv);
+    expect(migrated.break.duration_years).toBe(5);
+    expect(migrated.snapshot).toBeNull();
+    expect(migrated.selectedRole).toBeNull();
+    expect(migrated.gapResult).toBeNull();
+  });
+
+  it('invalidates downstream results when the CV or career-break evidence changes', () => {
+    store().setSnapshot(snapshot);
+    store().setGapResult({ readiness: 78 });
+    store().setBreakDuration(2);
+    expect(store().snapshot).toBeNull();
+    expect(store().gapResult).toBeNull();
+    store().setSnapshot(snapshot);
+    store().setCv({ raw_text: 'new synthetic CV' });
+    expect(store().snapshot).toBeNull();
   });
 });

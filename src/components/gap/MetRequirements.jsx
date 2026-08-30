@@ -4,7 +4,7 @@ import { useId, useState } from 'react';
  * The requirements this role asks for that she already covers. Collapsed by
  * default: the count is what moves when she switches role, the names are detail.
  */
-export default function MetRequirements({ skills, total }) {
+export default function MetRequirements({ skills, total, matched = skills.length }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
 
@@ -27,7 +27,7 @@ export default function MetRequirements({ skills, total }) {
       >
         <span aria-hidden="true">✓</span>
         <span className="flex-1">
-          You meet {skills.length} of {total} requirements
+          You meet {matched} of {total} requirements
         </span>
         <svg
           aria-hidden="true"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import Header from '../components/layout/Header.jsx';
 import GlassCard from '../components/ui/GlassCard.jsx';
@@ -18,34 +18,67 @@ export default function Gap() {
   const setSelectedRole = useIntakeStore((state) => state.setSelectedRole);
   const setGapResult = useIntakeStore((state) => state.setGapResult);
 
-  const [error, setError] = useState(null);
-  const [computing, setComputing] = useState(false);
-
-  const requestedRole = useRef(null);
+  const [failure, setFailure] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  const error =
+    failure?.snapshot === snapshot && failure?.role === selectedRole && failure?.attempt === attempt
+      ? failure.message
+      : null;
+  const computing = Boolean(snapshot && selectedRole && !gapResult && !error);
 
   useEffect(() => {
-    if (!snapshot || !selectedRole) return;
-    if (gapResult) return; // already computed for the current role (store clears it on any change)
-    if (requestedRole.current === selectedRole) return; // request already in flight for this role
+    if (!snapshot || !selectedRole || gapResult) return;
+    const controller = new AbortController();
+    let active = true;
+    computeGap(snapshot, selectedRole, { signal: controller.signal })
+      .then((result) => {
+        if (!active) return;
+        setGapResult(result);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        if (cause.name !== 'AbortError')
+          setFailure({ snapshot, role: selectedRole, attempt, message: cause.message });
+      });
 
-    requestedRole.current = selectedRole;
-    setError(null);
-    setComputing(true);
-
-    computeGap(snapshot, selectedRole)
-      .then(setGapResult)
-      .catch((cause) => setError(cause.message))
-      .finally(() => setComputing(false));
-  }, [snapshot, selectedRole, gapResult, setGapResult]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [snapshot, selectedRole, gapResult, setGapResult, attempt]);
 
   if (!snapshot) return <Navigate to="/diagnostic/background" replace />;
 
-  const projected =
+  const assessed =
     gapResult &&
+    gapResult.assessment_status !== 'not_assessed' &&
+    Number.isFinite(gapResult.readiness);
+  const requiredCount =
+    gapResult?.required_skill_count ??
+    (gapResult?.skills_have?.length ?? 0) + (gapResult?.gaps?.length ?? 0);
+  const projected =
+    assessed &&
     Math.round(
       (gapResult.readiness +
-        gapResult.gaps.slice(0, MAX_FOCUS_AREAS).reduce((sum, gap) => sum + gap.uplift, 0)) * 100,
+        gapResult.gaps.slice(0, MAX_FOCUS_AREAS).reduce((sum, gap) => sum + gap.uplift, 0)) *
+        100
     ) / 100;
+
+  const reasons = {
+    insufficient_skill_evidence:
+      'There is not enough recognised skill evidence to calculate readiness. Please check your CV in the earlier steps.',
+    role_not_eligible:
+      'This suggested role is not currently available for assessment. Return to your snapshot to refresh the suggestions.',
+    no_approved_requirements: 'This role does not yet have approved requirements to assess.',
+    invalid_requirement_profile: 'The role requirements cannot currently be assessed.',
+    invalid_ai_exposure: 'This role is missing information needed to calculate readiness.',
+    unknown_role:
+      'This role is no longer available. Return to your snapshot to refresh the suggestions.',
+    ambiguous_role_title:
+      'This role could not be identified reliably. Return to your snapshot to refresh the suggestions.',
+    reference_version_changed:
+      'The reference data has changed. Please regenerate your skill snapshot before assessing readiness.',
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-grad-page">
@@ -71,13 +104,43 @@ export default function Gap() {
           />
         </div>
 
-        {error && (
-          <p role="alert" className="mt-4 text-sm font-medium text-pink-600">
-            {error}
+        {!selectedRole && (
+          <p
+            role="status"
+            className="mt-5 rounded-2xl border border-ink-faint/20 bg-white/60 p-5 text-sm text-ink-soft"
+          >
+            We could not find a suitable target role from this CV, so readiness has not been
+            assessed. Return to your skill snapshot and check your uploaded CV.
           </p>
         )}
 
-        {gapResult && (
+        {error && (
+          <div role="alert" className="mt-4 text-sm font-medium text-pink-600">
+            <p>{error}</p>
+            <button
+              type="button"
+              className="mt-2 underline"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              Retry assessment
+            </button>
+          </div>
+        )}
+
+        {gapResult && !assessed && (
+          <div
+            role="status"
+            className="mt-5 rounded-2xl border border-ink-faint/20 bg-white/60 p-5"
+          >
+            <h2 className="font-display text-lg font-bold text-ink">Readiness not assessed</h2>
+            <p className="mt-2 text-sm text-ink-soft">
+              {reasons[gapResult.reason] ??
+                'We could not calculate a reliable assessment from the available information.'}
+            </p>
+          </div>
+        )}
+
+        {assessed && (
           /* The score is a narrow summary rail; the focus areas are the work, so
              they take the dominant column. */
           <div className="mt-5 grid items-start gap-5 md:grid-cols-[19rem_1fr]">
@@ -97,21 +160,33 @@ export default function Gap() {
               <div className="mt-5 border-t border-ink-faint/15 pt-4">
                 <MetRequirements
                   skills={gapResult.skills_have}
-                  total={gapResult.skills_have.length + gapResult.gaps.length}
+                  total={requiredCount}
+                  matched={gapResult.matched_skill_count ?? gapResult.skills_have.length}
                 />
               </div>
 
+              {gapResult.warnings?.some((warning) => warning.includes('band_missing')) && (
+                <p className="mt-4 text-xs text-ink-soft">
+                  One requirement band is missing from the reference data. This score covers only
+                  the available band.
+                </p>
+              )}
               <p className="mt-4 text-xs text-ink-soft">
                 Readiness weighs each required skill by how much the role depends on it, so it is
                 not a plain count of skills covered.
               </p>
             </GlassCard>
 
-            <FocusAreaList gaps={gapResult.gaps} />
+            <FocusAreaList
+              gaps={gapResult.gaps}
+              totalMissing={gapResult.missing_skill_count ?? gapResult.gaps.length}
+            />
           </div>
         )}
 
-        {computing && !gapResult && <p className="mt-6 text-sm text-ink-soft">Working it out…</p>}
+        {computing && selectedRole && !gapResult && (
+          <p className="mt-6 text-sm text-ink-soft">Working it out…</p>
+        )}
       </main>
     </div>
   );

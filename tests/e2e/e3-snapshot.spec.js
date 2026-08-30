@@ -138,7 +138,9 @@ test.describe('E3 — Skill Snapshot & Career Reframing', () => {
     await mockApi(page, { snapshot: 'snapshot.no-match' });
     await reachSnapshot(page);
 
-    await expect(page.getByText('No suitable match found')).toBeVisible();
+    await expect(
+      page.getByText(/could not reliably identify your previous occupation/)
+    ).toBeVisible();
     await expect(page.getByText('Exploratory match')).toHaveCount(0);
   });
 
